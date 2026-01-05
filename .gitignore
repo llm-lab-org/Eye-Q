@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.cache/
+results_cache.jsonl
+load_errors.txt
