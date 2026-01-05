@@ -31,24 +31,21 @@ def calculate_accuracy(cache_file: str) -> None:
             else:
                 model_display = f"{model_name}@temp={temperature}"
             
-            use_context = bool(data.get("use_context", False))
-            hint_type = str(data.get("hint_type")) if data.get("hint_type") else "None"
-            pass_at = bool(data.get("pass_at_enabled", False))
-            num_pass = int(data.get("num_pass", 1))
-
-            pass_str = f"True({num_pass})" if pass_at else "False"
-            config_key = (
-                f"{model_display:<20} | "
-                f"Ctx: {str(use_context):<5} | "
-                f"Hint: {hint_type:<13} | "
-                f"Pass@: {pass_str}"
-            )
+            prompt_variant = data.get("prompt_variant")
+            if not prompt_variant:
+                use_context = bool(data.get("use_context", False))
+                hint_type = str(data.get("hint_type")) if data.get("hint_type") else "None"
+                pass_at = bool(data.get("pass_at_enabled", False))
+                num_pass = int(data.get("num_pass", 1))
+                pass_str = f"True({num_pass})" if pass_at else "False"
+                prompt_variant = f"Ctx={use_context}, Hint={hint_type}, Pass@={pass_str}"
+            config_key = f"{model_display:<20} | {str(prompt_variant):<30}"
 
             stats[config_key][language]["total"] += 1
             if is_solved:
                 stats[config_key][language]["correct"] += 1
 
-    header = f"{'CONFIGURATION':<75} | {'TASK':<6} | {'ACCURACY':<8} | {'COUNTS'}"
+    header = f"{'CONFIGURATION':<55} | {'TASK':<6} | {'ACCURACY':<8} | {'COUNTS'}"
     print("\n" + "=" * 110)
     print(header)
     print("=" * 110)

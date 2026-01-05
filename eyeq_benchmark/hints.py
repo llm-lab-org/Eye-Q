@@ -40,11 +40,11 @@ def generate_hint(sample_id: int | str, language: str, answer: str, hint_type: s
 
     clean = answer.strip()
 
-    if hint_type == "char_count":
+    if hint_type in {"char_count", "answer_length", "answer_length_hint"}:
         n = len(clean.replace(" ", ""))
         return f"\nHINT: The answer has {n} characters (excluding spaces)."
 
-    if hint_type == "shuffle_chars":
+    if hint_type in {"shuffle_chars", "partial_character_reveal", "partial_reveal"}:
         pattern = _shuffle_pattern(clean, seed=_stable_seed(sample_id, language))
         return (
             "\nHINT: The pattern of the answer is '"

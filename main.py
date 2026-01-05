@@ -137,6 +137,7 @@ def _process_sample(
     sample: Dict[str, Any],
     examples: List[Tuple[Dict[str, Any], Dict[str, Any]]],
     model: Any,
+    prompt_variant: str,
     use_context: bool,
     hint_type: Optional[str],
     pass_at_enabled: bool,
@@ -199,6 +200,7 @@ def _process_sample(
         "id": sid,
         "language": lang,
         "model_name": model_name,
+        "prompt_variant": prompt_variant,
         "ground_truth": sample["answer"],
         "model_ans": model_ans,
         "hint_type": hint_type,
@@ -242,12 +244,37 @@ def main() -> None:
     p.add_argument("--split", default="train")
     p.add_argument("--languages", default="en,pe,cross,ar")
     p.add_argument("--models", default="openai")
-    p.add_argument("--use-context", action="store_true")
-    p.add_argument("--num-examples", type=int, default=3)
-    p.add_argument("--hint-type", default="none", choices=["none", "char_count", "shuffle_chars"])
-    p.add_argument("--pass-at", action="store_true")
-    p.add_argument("--num-pass", type=int, default=3)
-    p.add_argument("--temperature", type=float, default=None)
+    p.add_argument(
+        "--prompt-variant",
+        default="basic",
+        choices=[
+            "basic",
+            "few_shot_cot",
+            "iterative_refinement",
+            "partial_character_reveal",
+            "custom",
+        ],
+        help=(
+            "Prompting protocol from the Eye-Q paper. Use 'custom' to control the low-level flags."
+        ),
+    )
+    p.add_argument("--num-examples", type=int, default=3, help="Number of demonstrations for few_shot_cot")
+    p.add_argument(
+        "--hint-type",
+        default="none",
+        choices=[
+            "none",
+            "char_count",
+            "shuffle_chars",
+            "answer_length_hint",
+            "partial_character_reveal",
+        ],
+        help="Low-level hint type (used only when --prompt-variant=custom)",
+    )
+    p.add_argument("--use-context", action="store_true", help="Low-level flag (custom only)")
+    p.add_argument("--pass-at", action="store_true", help="Low-level flag (custom only)")
+    p.add_argument("--num-pass", type=int, default=3, help="Number of attempts for iterative refinement")
+    p.add_argument("--temperature", type=float, default=2.0)
     p.add_argument("--max-workers", type=int, default=8)
     p.add_argument("--max-samples", type=int, default=0)
     p.add_argument("--cache-file", default="results_cache.jsonl")
@@ -258,6 +285,31 @@ def main() -> None:
 
     model_list = [x.strip() for x in args.models.split(",") if x.strip()]
     lang_list = [x.strip() for x in args.languages.split(",") if x.strip()]
+
+    variant = (args.prompt_variant or "basic").strip().lower()
+    if variant != "custom":
+        if variant == "basic":
+            use_context = False
+            hint_type = "answer_length_hint"
+            pass_at_enabled = False
+        elif variant == "few_shot_cot":
+            use_context = True
+            hint_type = None
+            pass_at_enabled = False
+        elif variant == "iterative_refinement":
+            use_context = False
+            hint_type = "answer_length_hint"
+            pass_at_enabled = True
+        elif variant == "partial_character_reveal":
+            use_context = False
+            hint_type = "partial_character_reveal"
+            pass_at_enabled = False
+        else:
+            raise ValueError(f"Unknown prompt variant: {variant}")
+    else:
+        use_context = bool(args.use_context)
+        hint_type = None if args.hint_type == "none" else args.hint_type
+        pass_at_enabled = bool(args.pass_at)
 
     derivations = load_derivations()
     models = _build_models(model_list, temperature=args.temperature)
@@ -306,9 +358,9 @@ def main() -> None:
                         model_name=model_name,
                         language=lang,
                         sample_id=int(row["id"]),
-                        use_context=bool(args.use_context),
-                        hint_type=None if args.hint_type == "none" else args.hint_type,
-                        pass_at_enabled=bool(args.pass_at),
+                        use_context=bool(use_context),
+                        hint_type=hint_type,
+                        pass_at_enabled=bool(pass_at_enabled),
                         num_pass=int(args.num_pass),
                         temperature=float(args.temperature) if args.temperature is not None else None,
                     )
@@ -322,9 +374,10 @@ def main() -> None:
                             sample=row,
                             examples=examples,
                             model=model,
-                            use_context=bool(args.use_context),
-                            hint_type=None if args.hint_type == "none" else args.hint_type,
-                            pass_at_enabled=bool(args.pass_at),
+                            prompt_variant=variant,
+                            use_context=bool(use_context),
+                            hint_type=hint_type,
+                            pass_at_enabled=bool(pass_at_enabled),
                             num_pass=int(args.num_pass),
                             temperature=float(args.temperature) if args.temperature is not None else None,
                             cache_file=args.cache_file,
